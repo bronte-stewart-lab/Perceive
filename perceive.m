@@ -150,7 +150,7 @@ for a = 1:length(files)
         mkdir(fullfile(hdr.subject,['ses-' session]))
     end
 
-    hdr.fpath = fullfile(hdr.subject,hdr.session,'ieeg');
+    hdr.fpath = fullfile(hdr.subject,['ses-' session]);
     hdr.fname = [hdr.subject '_' hdr.session];
     hdr.chan = ['LFP_' hdr.LeadLocation];
     hdr.d0 = datetime(js.SessionDate(1:10));
@@ -619,8 +619,8 @@ for a = 1:length(files)
                             d.ecg{e} = perceive_ecg(raw(e,:));
                             title(strrep(d.label{e},'_',' '))
                             xlabel(strrep(d.fname,'_',' '))
-                            savefig(fullfile(hdr.fpath,[d.fname '_ECG_' d.label{e} '.fig']))
-                            perceive_print(fullfile(hdr.fpath,[d.fname '_ECG_' d.label{e}]))
+                            %savefig(fullfile(hdr.fpath,[d.fname '_ECG_' d.label{e} '.fig']))
+                            %perceive_print(fullfile(hdr.fpath,[d.fname '_ECG_' d.label{e}]))
                             d.ecg_cleaned(e,:) = d.ecg{e}.cleandata;                 
                         end
                         % TODO: set if needed:
@@ -827,11 +827,12 @@ for a = 1:length(files)
                             peaks(c,:)=nan(1,2);
                         end
                     end
-                    
+                    %{
                     T=array2table([freq';pow;rpow;lfit]','VariableNames',[{'Frequency'};strcat({'POW'},channels');strcat({'RPOW'},channels');strcat({'LFIT'},channels')]);
                     writetable(T,fullfile(hdr.fpath,[hdr.fname '_run-BrainSenseSurveyPowerSpectra.csv']));
                     T=array2table(peaks','VariableNames',channels,'RowNames',{'PeakFrequency','PeakPower'});
                     writetable(T,fullfile(hdr.fpath,[hdr.fname '_run-BrainSenseSurvey_Peaks.csv']));
+                    %}
                     %{
                     figure('Units','centimeters','PaperUnits','centimeters','Position',[1 1 40 20])
                     ir = perceive_ci([hdr.chan '_R'],channels);

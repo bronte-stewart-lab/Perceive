@@ -29,32 +29,39 @@ for a = 1:length(files)
                             
         %% below is Jin Woo code 
         trial=1;
+        all_trial=1;
+        while all_trial <= size(alldata,2)
+            if ~isfield(alldata{1,all_trial},'datatype')
+                all_trial=all_trial+1;
+                continue
+            end
+            if ~contains(alldata{1,all_trial}.datatype,'TimeDomain')
+                all_trial=all_trial+1;
+                continue
+            end
+        
+            for i=1:size(alldata{1,all_trial}.trial{1,1},1)
+                js.BrainSenseTimeDomain(trial).TimeDomainData=alldata{1,all_trial}.trial{1,1}(i,:)';
+                js.BrainSenseTimeDomain(trial).TimeDomainECGCleaned=alldata{1,all_trial}.ecg_cleaned(i,:)';
+                js.BrainSenseTimeDomain(trial).LeadSide=alldata{1,all_trial}.label{i,1};
+                trial=trial+1;
+            end
+            all_trial=all_trial+1;
+        end
+
+
+        trial=1;
         file_label=1;
         while trial <= length(js.BrainSenseTimeDomain)
-            trialname=['_output' num2str(file_label) '.csv'];
-            all_trial=1;
-            flag=0;
-            count=1;
-            while all_trial <= size(alldata,2)
-                if ~isfield(alldata{1,all_trial},'datatype')
-                    all_trial=all_trial+1;
-                    continue
-                end
-                for i=1:size(alldata{1,all_trial}.trial{1,1},1)
-                    if(trial==count)
-                        js.BrainSenseTimeDomain(trial).TimeDomainData=alldata{1,all_trial}.trial{1,1}(i,:)';
-                        flag=1;
-                    end
-                    count=count+1;
-                end
-                if(flag==1)
-                    break
-                end
-                all_trial=all_trial+1;
-            end
+            filename=['output' num2str(file_label) '.csv'];
             start_time=js.BrainSenseTimeDomain.FirstPacketDateTime;
             time_length=size(js.BrainSenseTimeDomain(trial).TimeDomainData,1);
-            col_names={'localTime', 'DerivedTime','TD_key0','TD_key2','TD_key1','TD_key3','TD_samplerate','Adaptive_CurrentProgramAmplitudesInMilliamps_1','Adaptive_CurrentProgramAmplitudesInMilliamps_2','Adaptive_CurrentProgramAmplitudesInMilliamps_3','Adaptive_CurrentProgramAmplitudesInMilliamps_4','Adaptive_StimRateInHz','Adaptive_Ld0_highThreshold','Adaptive_Ld0_lowThreshold','Adaptive_Ld1_highThreshold','Adaptive_Ld1_lowThreshold'};
+            col_names={'localTime', 'DerivedTime','TD_Left','TD_Right','TD_Left_ecgcleaned',...
+                'TD_Right_ecgcleaned','TD_samplerate','LFP_Left','LFP_Right','LFP_samplerate',...
+                'AmplitudesInMilliamps_Left','AmplitudesInMilliamps_Right',...
+                'StimRateInHz','UpperLfpThreshold_Left','UpperLfpThreshold_Right',...
+                'LowerLfpThreshold_Left','LowerLfpThreshold_Right'};
+
             cell_array=cell(time_length, length(col_names));
             cell_array(:)={"NaN"};
         
@@ -81,18 +88,26 @@ for a = 1:length(files)
                 unixTime=unixTime-(1000/js.BrainSenseTimeDomain(trial).SampleRateInHz);
             end
         
-            %fills TD_key (starting from 0)
-            idx=find(strcmp(col_names,'TD_key0'));
-            cell_array(:,idx)=num2cell(js.BrainSenseTimeDomain(trial).TimeDomainData);
+            %fills TD_keys considering lead side
             skip=0;
-            for i=1:length(js.BrainSenseTimeDomain)-trial
+            for i=0:length(js.BrainSenseTimeDomain)-trial
                 if js.BrainSenseTimeDomain(trial).FirstPacketDateTime == js.BrainSenseTimeDomain(trial+i).FirstPacketDateTime
-                    cell_array(:,idx+i)=num2cell(js.BrainSenseTimeDomain(trial+i).TimeDomainData);
+                    if contains(js.BrainSenseTimeDomain(trial+i).LeadSide, '_L_')
+                        findSide='TD_Left';
+                    end
+                    if contains(js.BrainSenseTimeDomain(trial+i).LeadSide, '_R_')
+                        findSide='TD_Right';
+                    end
+                    idx=find(strcmp(col_names,findSide));
+                    idx_ecg=find(strcmp(col_names,append(findSide,'_ecgcleaned')));
+                    cell_array(:,idx)=num2cell(js.BrainSenseTimeDomain(trial+i).TimeDomainData);
+                    cell_array(:,idx_ecg)=num2cell(js.BrainSenseTimeDomain(trial+i).TimeDomainECGCleaned);
                     skip=i;
                 else
                     break;
                 end
             end
+        
         
             %fills TD_samplerate (considering GlobalPacketSizes)
             idx_print=0;
@@ -123,25 +138,31 @@ for a = 1:length(files)
                         lfp_ticks=js.BrainSenseLfp(i).LfpData(idx_lfpticks).TicksInMs;
                         if(str2num(TD_ticks{j}) <= lfp_ticks && lfp_ticks < str2num(TD_ticks{j+1}))
                             temp_loc=loc+int64(str2num(TD_packet_sizes{j+1})*((lfp_ticks-str2num(TD_ticks{j}))/(str2num(TD_ticks{j+1})-str2num(TD_ticks{j}))));
-                            idx_col=find(strcmp(col_names,'Adaptive_CurrentProgramAmplitudesInMilliamps_1'));
+                            idx_col=find(strcmp(col_names,'AmplitudesInMilliamps_Right'));
                             cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).LfpData(idx_lfpticks).Right.mA);
-                            idx_col=find(strcmp(col_names,'Adaptive_CurrentProgramAmplitudesInMilliamps_2'));
+                            idx_col=find(strcmp(col_names,'AmplitudesInMilliamps_Left'));
                             cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).LfpData(idx_lfpticks).Left.mA);
+                            idx_col=find(strcmp(col_names,'LFP_Right'));
+                            cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).LfpData(idx_lfpticks).Right.LFP);
+                            idx_col=find(strcmp(col_names,'LFP_Left'));
+                            cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).LfpData(idx_lfpticks).Left.LFP);
+                            idx_col=find(strcmp(col_names,'LFP_samplerate'));
+                            cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).SampleRateInHz);
         
                             if isfield(js.BrainSenseLfp(i).TherapySnapshot, 'Right')
-                                idx_col=find(strcmp(col_names,'Adaptive_Ld0_highThreshold'));
-                                cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Right.UpperLimitInMilliAmps);
-                                idx_col=find(strcmp(col_names,'Adaptive_Ld0_lowThreshold'));
-                                cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Right.LowerLimitInMilliAmps);
-                                idx_col=find(strcmp(col_names,'Adaptive_StimRateInHz'));
+                                idx_col=find(strcmp(col_names,'UpperLfpThreshold_Right'));
+                                cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Right.UpperLfpThreshold);
+                                idx_col=find(strcmp(col_names,'LowerLfpThreshold_Right'));
+                                cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Right.LowerLfpThreshold);
+                                idx_col=find(strcmp(col_names,'StimRateInHz'));
                                 cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Right.RateInHertz);
                             end
                             if isfield(js.BrainSenseLfp(i).TherapySnapshot, 'Left')
-                                idx_col=find(strcmp(col_names,'Adaptive_Ld1_highThreshold'));
-                                cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Left.UpperLimitInMilliAmps);
-                                idx_col=find(strcmp(col_names,'Adaptive_Ld1_lowThreshold'));
-                                cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Left.LowerLimitInMilliAmps);
-                                idx_col=find(strcmp(col_names,'Adaptive_StimRateInHz'));
+                                idx_col=find(strcmp(col_names,'UpperLfpThreshold_Left'));
+                                cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Left.UpperLfpThreshold);
+                                idx_col=find(strcmp(col_names,'LowerLfpThreshold_Left'));
+                                cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Left.LowerLfpThreshold);
+                                idx_col=find(strcmp(col_names,'StimRateInHz'));
                                 cell_array(temp_loc,idx_col)=num2cell(js.BrainSenseLfp(i).TherapySnapshot.Left.RateInHertz);
                             end
         
@@ -154,12 +175,12 @@ for a = 1:length(files)
                     end
                 end
             end
-                    
-            %save csv file
+            
+        %save csv file
             output=cell2table(cell_array);
             output=renamevars(output,output.Properties.VariableNames,col_names);
-            writetable(output,fullfile(subjectID,[subjectID '_ses-' session trialname]));
-            disp(['saved ' subjectID '_ses-' session trialname])
+            writetable(output,fullfile(subjectID,[subjectID '_ses-' session  '-output-' num2str(file_label) '.csv']));
+            disp(['saved ' subjectID '_ses-' session num2str(file_label)])
         
         
             trial=trial+skip+1;
@@ -169,43 +190,8 @@ for a = 1:length(files)
         
         
        
-        % localTime - js.BrainSenseTimeDomain.FirstPacketDateTime (need to find pair based on this)
-        % DerivedTime - converted localtime in unix
-        % *TD_key - js.BrainSenseTimeDomain.TimeDomainData 
-        % TD_samplerate - hdr.jr.BrainSenseTimeDomain.SampleRateInHz
-        % Accel_XSamples - NaN
-        % Accel_YSamples - NaN
-        % Accel_ZSamples - NaN
-        % Accel_samplerate - NaN
-        % Adaptive_CurrentAdaptiveState hdr.jr.BrainSenseLfp.therapySnapshot.Right(Left).AdaptiveTherapyStatus (?)
-        % *Adaptive_CurrentProgramAmplitudesInMilliamps - js.BrainSenseLfp.LfpData (right or left)
-        % Adaptive_IsInHoldOffOnStartup
-        % Adaptive_Ld0DetectionStatus
-        % Adaptive_Ld1DetectionStatus
-        % Adaptive_PreviousAdaptiveState
-        % Adaptive_SensingStatus
-        % Adaptive_StateEntryCount
-        % Adaptive_StateTime
-        % Adaptive_StimFlags
-        % Adaptive_StimRateInHz - js.BrainSenseLfp.TherapySnapshot.Right(Left).RateInHertz 
-        % Adaptive_Ld0_featureInputs_1
-        % Adaptive_Ld0_featureInputs_2
-        % Adaptive_Ld0_featureInputs_3
-        % Adaptive_Ld0_featureInputs_4
-        % Adaptive_Ld0_fixedDecimalPoint
-        % Adaptive_Ld0_highThreshold - js.BrainSenseLfp.TherapySnapshot.Right(Left).UpperLfpThreshold
-        % Adaptive_Ld0_lowThreshold - js.BrainSenseLfp.TherapySnapshot.Right(Left).LowerLfpThreshold
-        % Adaptive_Ld0_output
-        % Adaptive_Ld1_featureInputs_1
-        % Adaptive_Ld1_featureInputs_2
-        % Adaptive_Ld1_featureInputs_3
-        % Adaptive_Ld1_featureInputs_4
-        % Adaptive_Ld1_fixedDecimalPoint
-        % Adaptive_Ld1_highThreshold - js.BrainSenseLfp.TherapySnapshot.Right(Left).UpperLfpThreshold
-        % Adaptive_Ld1_lowThreshold - js.BrainSenseLfp.TherapySnapshot.Right(Left).LowerLfpThreshold
-        % Adaptive_Ld1_output
-
-         %% below CC addition 
+   
+ %% below CC addition 
         % Save json info
         filePath = fullfile(subjectID, ['ses-' session], 'js.mat');
         save(filePath, 'js');
